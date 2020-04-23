@@ -9,6 +9,8 @@ enable_redirect_dns=$(uci get openclash.config.enable_redirect_dns 2>/dev/null)
 dns_port=$(uci get openclash.config.dns_port 2>/dev/null)
 disable_masq_cache=$(uci get openclash.config.disable_masq_cache 2>/dev/null)
 en_mode=$(uci get openclash.config.en_mode 2>/dev/null)
+redir_input_itf="$(uci get openclash.config.redir_input_interface 2>/dev/null)"
+redir_input_itf="${redir_input_itf// }"
 cfg_update_interval=$(uci get openclash.config.config_update_interval 2>/dev/null)
 CRASH_NUM=0
 CFG_UPDATE_INT=0
@@ -83,10 +85,18 @@ fi
 
 ## 端口转发重启
    last_line=$(iptables -t nat -nL PREROUTING --line-number |awk '{print $1}' 2>/dev/null |awk 'END {print}' |sed -n '$p')
-   op_line=$(iptables -t nat -nL PREROUTING --line-number |grep "openclash" 2>/dev/null |awk '{print $1}' 2>/dev/null |head -1)
-   if [ "$last_line" != "$op_line" ] && [ -z "$core_type" ]; then
-      iptables -t nat -D PREROUTING -p tcp -j openclash
-      iptables -t nat -A PREROUTING -p tcp -j openclash
+   op_line=$(iptables -t nat -nL PREROUTING --line-number |grep '\bopenclash\b' 2>/dev/null |awk '{print $1}' 2>/dev/null |head -1)
+   current_detail=$(iptables -t nat -S PREROUTING |grep '\-j openclash\b' 2>/dev/null |head -1 |cut -d' ' -f2-)
+   if [ -n "$redir_input_itf" ]; then
+      expected_detail="PREROUTING -i ${redir_input_itf} -p tcp -j openclash"
+   else
+      expected_detail="PREROUTING -p tcp -j openclash"
+   fi
+   if [ -z "$core_type" ] && ( [ "$last_line" != "$op_line" ] || [ "$current_detail" != "$expected_detail" ] ) ; then
+      # Remove all openclash rule
+      iptables_clean_script="$(echo '*nat' ; iptables -t nat -S PREROUTING |grep '\-j openclash\b' 2>/dev/null  |grep '^-A' 2>/dev/null | sed 's/^-A/-D/' ; echo 'COMMIT')"
+      echo "${iptables_clean_script}" | iptables-restore -T nat -w --noflush
+      iptables -t nat -A ${expected_detail}
       echo "$LOGTIME Watchdog: Reset Firewall For Enabling Redirect." >>$LOG_FILE
    fi
    

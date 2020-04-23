@@ -53,6 +53,12 @@ o:value("fake-ip-mix", translate("fake-ip-mix(tun mix mode)"))
 o.default = "fake-ip"
 end
 
+o = s:taboption("op_mode", Value, "redir_input_interface", translate("Redir Input Interface"))
+o.datatype = "string"
+o.description = translate("Select the interface you want to redir. Leave empty if all interfaces")
+o:depends("operation_mode", "redir-host")
+o.default = ""
+
 o = s:taboption("op_mode", ListValue, "enable_udp_proxy", font_red..bold_on..translate("Proxy UDP Traffics")..bold_off..font_off)
 o.description = translate("Select Mode For UDP Traffics, The Servers Must Support UDP while Choose Proxy")
 o:depends("en_mode", "redir-host")

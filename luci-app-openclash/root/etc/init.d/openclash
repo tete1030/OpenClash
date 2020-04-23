@@ -1272,7 +1272,11 @@ if [ -z "$en_mode_tun" ] || [ "$en_mode_tun" -eq 3 ]; then
       iptables -t nat -I PREROUTING -p tcp -d 8.8.8.8 --dport 53 -j REDIRECT --to-ports "$proxy_port"
       iptables -t nat -I PREROUTING -p tcp -d 8.8.4.4 --dport 53 -j REDIRECT --to-ports "$proxy_port"
    fi
-   iptables -t nat -A PREROUTING -p tcp -j openclash
+   if [ -n "$redir_input_itf" ]; then
+      iptables -t nat -A PREROUTING -i ${redir_input_itf} -p tcp -j openclash
+   else
+      iptables -t nat -A PREROUTING -p tcp -j openclash
+   fi
    if [ -z "$en_mode_tun" ]; then
       #udp
       if [ "$enable_udp_proxy" -eq 1 ]; then
@@ -1528,6 +1532,8 @@ revert_firewall()
 
 get_config()
 {
+   redir_input_itf="$(uci get openclash.config.redir_input_interface 2>/dev/null)"
+   redir_input_itf="${redir_input_itf// }"
    rule_source=$(uci get openclash.config.rule_source 2>/dev/null)
    enable_custom_dns=$(uci get openclash.config.enable_custom_dns 2>/dev/null)
    enable_custom_clash_rules=$(uci get openclash.config.enable_custom_clash_rules 2>/dev/null) 
