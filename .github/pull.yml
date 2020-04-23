@@ -3,7 +3,4 @@ rules:
   - base: master
     upstream: vernesong:master
     mergeMethod: hardreset
-  - base: my
-    upstream: master
-    mergeMethod: rebase
 label: ":arrow_heading_down: pull"

@@ -1,0 +1,43 @@
+name: Sync From Upstream
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      # UPSTREAM_REPO: https://github.com/vernesong/OpenClash.git
+      UPSTREAM_BRANCH: master
+      OUR_BRANCH: my
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ env.OUR_BRANCH }}
+          fetch-depth: 0
+      - name: Check & Merge
+        run: |
+          set -e
+          set -x
+          
+          git config user.name "${GITHUB_ACTOR}-auto"
+          git config user.email "${GITHUB_ACTOR}-auto@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          if [ -n "$UPSTREAM_REPO" ]; then
+            git remote add upstream "$UPSTREAM_REPO"
+            git fetch upstream "$UPSTREAM_BRANCH"
+            git remote -v
+            UPSTREAM_REF="upstream/$UPSTREAM_BRANCH"
+          else
+            git fetch origin "$UPSTREAM_BRANCH"
+            UPSTREAM_REF="origin/$UPSTREAM_BRANCH"
+          fi
+
+          if ! git merge-base --is-ancestor "$UPSTREAM_REF" "$OUR_BRANCH" ; then
+          
+            git rebase --autosquash --autostash "$UPSTREAM_REF"
+            git push --force origin "$OUR_BRANCH"
+          fi
+
