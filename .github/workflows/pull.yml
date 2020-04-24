@@ -51,7 +51,7 @@ jobs:
               rebase_status=$?
             set -eo pipefail
             if [ $rebase_status -eq 0 ]; then
-              echo "Rebase succeed, comparison of HEAD before & after force push:"
+              echo "Rebase succeed, diff between before & after of rebased commits:"
               git range-diff "${UPSTREAM_REF}" @{1} @
               echo "Force pushing"
               git push --force origin "$OUR_BRANCH"
