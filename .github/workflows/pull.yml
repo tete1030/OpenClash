@@ -1,8 +1,9 @@
 name: Sync From Upstream
 
 on:
+  push:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '* */12 * * *'
 
 jobs:
   sync:
@@ -18,9 +19,14 @@ jobs:
           fetch-depth: 0
       - name: Check & Merge
         run: |
-          set -e
+          set -eo pipefail
           set -x
-          
+
+          git --version
+
+          git config merge.conflictstyle diff3
+          git config color.ui always
+
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
@@ -35,9 +41,30 @@ jobs:
             UPSTREAM_REF="origin/$UPSTREAM_BRANCH"
           fi
 
-          if ! git merge-base --is-ancestor "$UPSTREAM_REF" "$OUR_BRANCH" ; then
-          
-            git rebase --autosquash --autostash "$UPSTREAM_REF"
-            git push --force origin "$OUR_BRANCH"
+          set +x
+          if git merge-base --is-ancestor "$UPSTREAM_REF" "$OUR_BRANCH" ; then
+            echo "Nothing to update"
+          else
+            echo "Rebasing $OUR_BRANCH on $UPSTREAM_REF"
+            set +eo pipefail
+              git rebase --autosquash --autostash "$UPSTREAM_REF"
+              rebase_status=$?
+            set -eo pipefail
+            if [ $rebase_status -eq 0 ]; then
+              echo "Rebase succeed, comparison of HEAD before & after force push:"
+              git range-diff "${UPSTREAM_REF}" @{1} @
+              echo "Force pushing"
+              git push --force origin "$OUR_BRANCH"
+            else
+              echo "Rebase failed"
+              git status
+              echo "Current patch:"
+              git rebase --show-current-patch
+              echo "Conflicts:"
+              git diff --diff-filter=U --color-moved --color-words
+              echo "Diff between REBASE_HEAD & Upstream:"
+              git diff --name-only --diff-filter=U | xargs git diff REBASE_HEAD..."${UPSTREAM_REF}" --
+              exit 1
+            fi
           fi
 
