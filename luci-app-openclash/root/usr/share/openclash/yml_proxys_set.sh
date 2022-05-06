@@ -108,8 +108,8 @@ yml_proxy_provider_set()
    if [ "$config" = "$CONFIG_NAME" ] || [ "$config" = "all" ]; then
       if [ -n "$(grep -w "path: $path" "$PROXY_PROVIDER_FILE" 2>/dev/null)" ]; then
          return
-      elif [ "$(grep -w "$name$" "$proxy_provider_name" |wc -l 2>/dev/null)" -ge 2 ] && [ -z "$(grep -w "path: $path" "$PROXY_PROVIDER_FILE" 2>/dev/null)" ]; then
-      	 sed -i "1,/${name}/{//d}" "$proxy_provider_name" 2>/dev/null
+      elif [ "$(grep -w "^$name$" "$proxy_provider_name" |wc -l 2>/dev/null)" -ge 2 ] && [ -z "$(grep -w "path: $path" "$PROXY_PROVIDER_FILE" 2>/dev/null)" ]; then
+      	 sed -i "1,/^${name}$/{//d}" "$proxy_provider_name" 2>/dev/null
          return
       fi
    fi
@@ -217,6 +217,7 @@ yml_servers_set()
    config_get "auth_pass" "$section" "auth_pass" ""
    config_get "psk" "$section" "psk" ""
    config_get "obfs_snell" "$section" "obfs_snell" ""
+   config_get "snell_version" "$section" "snell_version" ""
    config_get "sni" "$section" "sni" ""
    config_get "alpn" "$section" "alpn" ""
    config_get "http_path" "$section" "http_path" ""
@@ -233,6 +234,8 @@ yml_servers_set()
    config_get "trojan_ws_headers" "$section" "trojan_ws_headers" ""
    config_get "interface_name" "$section" "interface_name" ""
    config_get "routing_mark" "$section" "routing_mark" ""
+   config_get "obfs_vless" "$section" "obfs_vless" ""
+   config_get "vless_flow" "$section" "vless_flow" ""
 
    if [ "$enabled" = "0" ]; then
       return
@@ -270,7 +273,7 @@ yml_servers_set()
    
    #避免重复节点
    if [ "$config" = "$CONFIG_NAME" ] || [ "$config" = "all" ]; then
-      if [ "$(grep -w "$name$" "$servers_name" |wc -l 2>/dev/null)" -ge 2 ] && [ -n "$(grep -w "name: \"$name\"" "$SERVER_FILE" 2>/dev/null)" ]; then
+      if [ "$(grep -w "^$name$" "$servers_name" |wc -l 2>/dev/null)" -ge 2 ] && [ -n "$(grep -w "name: \"$name\"" "$SERVER_FILE" 2>/dev/null)" ]; then
          return
       fi
    fi
@@ -278,12 +281,16 @@ yml_servers_set()
    if [ "$config" = "$CONFIG_NAME" ] || [ "$config" = "all" ]; then
       if [ -n "$(grep -w "name: \"$name\"" "$SERVER_FILE" 2>/dev/null)" ]; then
          return
-      elif [ "$(grep -w "$name$" "$servers_name" |wc -l 2>/dev/null)" -ge 2 ] && [ -z "$(grep -w "name: \"$name\"" "$SERVER_FILE" 2>/dev/null)" ]; then
-      	 sed -i "1,/${name}/{//d}" "$servers_name" 2>/dev/null
+      elif [ "$(grep -w "^$name$" "$servers_name" |wc -l 2>/dev/null)" -ge 2 ] && [ -z "$(grep -w "name: \"$name\"" "$SERVER_FILE" 2>/dev/null)" ]; then
+      	 sed -i "1,/^${name}$/{//d}" "$servers_name" 2>/dev/null
          return
       fi
    fi
    LOG_OUT "Start Writing【$CONFIG_NAME - $type - $name】Proxy To Config File..."
+   
+   if [ "$cipher_ssr" == "none" ]; then
+      cipher_ssr="dummy"
+   fi
    
    if [ "$obfs" != "none" ] && [ -n "$obfs" ]; then
       if [ "$obfs" = "websocket" ]; then
@@ -293,6 +300,14 @@ yml_servers_set()
       fi
    else
       obfss=""
+   fi
+   
+   if [ "$obfs_vless" = "ws" ]; then
+      obfs_vless="network: ws"
+   fi
+   
+   if [ "$obfs_vless" = "grpc" ]; then
+      obfs_vless="network: grpc"
    fi
    
    if [ "$obfs_vmess" = "websocket" ]; then
@@ -523,7 +538,73 @@ EOF
          fi
       fi
    fi
-
+   
+#vless
+   if [ "$type" = "vless" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+  - name: "$name"
+    type: $type
+    server: "$server"
+    port: $port
+    uuid: $uuid
+EOF
+      if [ ! -z "$udp" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    udp: $udp
+EOF
+      fi
+      if [ ! -z "$skip_cert_verify" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    skip-cert-verify: $skip_cert_verify
+EOF
+      fi
+      if [ ! -z "$tls" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    tls: $tls
+EOF
+      fi
+      if [ ! -z "$servername" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    servername: "$servername"
+EOF
+      fi
+      if [ "$obfs_vless" != "none" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    $obfs_vless
+EOF
+         if [ "$obfs_vless" = "network: ws" ]; then
+            if [ -n "$ws_opts_path" ] || [ -n "$ws_opts_headers" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    ws-opts:
+EOF
+               if [ -n "$ws_opts_path" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+      path: "$ws_opts_path"
+EOF
+               fi
+               if [ -n "$ws_opts_headers" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+      headers:
+EOF
+                  config_list_foreach "$section" "ws_opts_headers" set_ws_headers
+               fi
+            fi
+         fi
+         if [ ! -z "$grpc_service_name" ] && [ "$obfs_vless" = "network: grpc" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    grpc-opts:
+      grpc-service-name: "$grpc_service_name"
+EOF
+         fi
+      else
+         if [ ! -z "$vless_flow" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    flow: "$vless_flow"
+EOF
+         fi
+      fi
+   fi
+   
 #socks5
    if [ "$type" = "socks5" ]; then
 cat >> "$SERVER_FILE" <<-EOF
@@ -661,6 +742,11 @@ cat >> "$SERVER_FILE" <<-EOF
     port: $port
     psk: $psk
 EOF
+   if [ -n "$snell_version" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    version: "$snell_version"
+EOF
+   fi
    if [ "$obfs_snell" != "none" ] && [ ! -z "$host" ]; then
 cat >> "$SERVER_FILE" <<-EOF
     obfs-opts:
@@ -850,6 +936,7 @@ ${uci_set}Others="Others"
 
 [ "$config_auto_update" -eq 1 ] && [ "$new_servers_group_set" -eq 1 ] && {
 	${UCI_SET}servers_update="1"
+	${UCI_DEL_LIST}="all" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Auto - UrlTest" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Auto - UrlTest" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Proxy" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Proxy" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Asian TV" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Asian TV" >/dev/null 2>&1
@@ -1065,6 +1152,34 @@ EOF
 fi
 cat /tmp/Proxy_Provider >> $SERVER_FILE 2>/dev/null
 cat >> "$SERVER_FILE" <<-EOF
+  - name: Discovery Plus
+    type: select
+    proxies:
+      - Global TV
+      - DIRECT
+EOF
+cat /tmp/Proxy_Server >> $SERVER_FILE 2>/dev/null
+if [ -f "/tmp/Proxy_Provider" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    use:
+EOF
+fi
+cat /tmp/Proxy_Provider >> $SERVER_FILE 2>/dev/null
+cat >> "$SERVER_FILE" <<-EOF
+  - name: DAZN
+    type: select
+    proxies:
+      - Global TV
+      - DIRECT
+EOF
+cat /tmp/Proxy_Server >> $SERVER_FILE 2>/dev/null
+if [ -f "/tmp/Proxy_Provider" ]; then
+cat >> "$SERVER_FILE" <<-EOF
+    use:
+EOF
+fi
+cat /tmp/Proxy_Provider >> $SERVER_FILE 2>/dev/null
+cat >> "$SERVER_FILE" <<-EOF
   - name: Spotify
     type: select
     proxies:
@@ -1190,6 +1305,8 @@ ${uci_set}GoogleFCM="Google FCM"
 ${uci_set}Scholar="Scholar"
 ${uci_set}Microsoft="Microsoft"
 ${uci_set}Netflix="Netflix"
+${uci_set}Discovery="Discovery Plus"
+${uci_set}DAZN="DAZN"
 ${uci_set}Disney="Disney"
 ${uci_set}Spotify="Spotify"
 ${uci_set}Steam="Steam"
@@ -1202,6 +1319,7 @@ ${uci_set}Others="Others"
 
 [ "$config_auto_update" -eq 1 ] && [ "$new_servers_group_set" -eq 1 ] && {
 	${UCI_SET}servers_update="1"
+	${UCI_DEL_LIST}="all" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Auto - UrlTest" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Auto - UrlTest" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Proxy" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Proxy" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Youtube" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Youtube" >/dev/null 2>&1
@@ -1213,6 +1331,8 @@ ${uci_set}Others="Others"
 	${UCI_DEL_LIST}="Asian TV" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Asian TV" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Global TV" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Global TV" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Netflix" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Netflix" >/dev/null 2>&1
+	${UCI_DEL_LIST}="Discovery Plus" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Discovery Plus" >/dev/null 2>&1
+	${UCI_DEL_LIST}="DAZN" >/dev/null 2>&1 && ${UCI_ADD_LIST}="DAZN" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Apple" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Apple" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Google FCM" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Google FCM" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Scholar" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Scholar" >/dev/null 2>&1
@@ -1278,6 +1398,7 @@ ${uci_set}Proxy="Proxy"
 ${uci_set}Others="Others"
 [ "$config_auto_update" -eq 1 ] && [ "$new_servers_group_set" -eq 1 ] && {
 	${UCI_SET}servers_update="1"
+	${UCI_DEL_LIST}="all" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Auto - UrlTest" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Auto - UrlTest" >/dev/null 2>&1
 	${UCI_DEL_LIST}="Proxy" >/dev/null 2>&1 && ${UCI_ADD_LIST}="Proxy" >/dev/null 2>&1
 }

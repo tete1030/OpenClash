@@ -12,6 +12,7 @@ disable_masq_cache=$(uci -q get openclash.config.disable_masq_cache)
 cfg_update_interval=$(uci -q get openclash.config.config_update_interval || echo 60)
 log_size=$(uci -q get openclash.config.log_size || echo 1024)
 core_type=$(uci -q get openclash.config.core_type)
+router_self_proxy=$(uci -q get openclash.config.router_self_proxy || echo 1)
 stream_domains_prefetch_interval=$(uci -q get openclash.config.stream_domains_prefetch_interval || echo 1440)
 stream_auto_select_interval=$(uci -q get openclash.config.stream_auto_select_interval || echo 30)
 NETFLIX_DOMAINS_LIST="/usr/share/openclash/res/Netflix_Domains.list"
@@ -41,6 +42,10 @@ do
    stream_auto_select_tvb_anywhere=$(uci -q get openclash.config.stream_auto_select_tvb_anywhere || echo 0)
    stream_auto_select_prime_video=$(uci -q get openclash.config.stream_auto_select_prime_video || echo 0)
    stream_auto_select_ytb=$(uci -q get openclash.config.stream_auto_select_ytb || echo 0)
+   stream_auto_select_dazn=$(uci -q get openclash.config.stream_auto_select_dazn || echo 0)
+   stream_auto_select_paramount_plus=$(uci -q get openclash.config.stream_auto_select_paramount_plus || echo 0)
+   stream_auto_select_discovery_plus=$(uci -q get openclash.config.stream_auto_select_discovery_plus || echo 0)
+   
    enable=$(uci -q get openclash.config.enable)
 
 if [ "$enable" -eq 1 ]; then
@@ -62,15 +67,17 @@ if [ "$enable" -eq 1 ]; then
 	         touch /tmp/openclash.log 2>/dev/null
            chmod o+w /etc/openclash/proxy_provider/* 2>/dev/null
            chmod o+w /etc/openclash/rule_provider/* 2>/dev/null
+           chmod o+w /etc/openclash/history/* 2>/dev/null
            chmod o+w /tmp/openclash.log 2>/dev/null
+           chmod o+w /etc/openclash/cache.db 2>/dev/null
            chown nobody:nogroup /etc/openclash/core/* 2>/dev/null
-           capabilties="cap_sys_resource,cap_dac_override,cap_net_raw,cap_net_bind_service,cap_net_admin"
+           capabilties="cap_sys_resource,cap_dac_override,cap_net_raw,cap_net_bind_service,cap_net_admin,cap_sys_ptrace"
            capsh --caps="${capabilties}+eip" -- -c "capsh --user=nobody --addamb='${capabilties}' -- -c 'nohup $CLASH -d $CLASH_CONFIG -f \"$CONFIG_FILE\" >> $LOG_FILE 2>&1 &'" >> $LOG_FILE 2>&1
         else
            nohup $CLASH -d $CLASH_CONFIG -f "$CONFIG_FILE" >> $LOG_FILE 2>&1 &
         fi
 	      sleep 3
-	      if [ "$core_type" = "TUN" ]; then
+	      if [ "$core_type" == "TUN" ] || [ "$core_type" == "Meta" ]; then
 	         ip route replace default dev utun table "$PROXY_ROUTE_TABLE" 2>/dev/null
 	         ip rule add fwmark "$PROXY_FWMARK" table "$PROXY_ROUTE_TABLE" 2>/dev/null
 	      fi
@@ -137,7 +144,7 @@ fi
    /usr/share/openclash/openclash_dler_checkin.lua >/dev/null 2>&1
 
 ##STREAMING_UNLOCK_CHECK
-   if [ "$stream_auto_select" -eq 1 ]; then
+   if [ "$stream_auto_select" -eq 1 ] && [ "$router_self_proxy" -eq 1 ]; then
       [ "$stream_auto_select_interval" -ne "$stream_auto_select_interval_now" ] && STREAM_AUTO_SELECT=1 && stream_auto_select_interval="$stream_auto_select_interval_now"
       if [ "$STREAM_AUTO_SELECT" -ne 0 ]; then
          if [ "$(expr "$STREAM_AUTO_SELECT" % "$stream_auto_select_interval_now")" -eq 0 ] || [ "$STREAM_AUTO_SELECT" -eq 1 ]; then
@@ -152,6 +159,10 @@ fi
             if [ "$stream_auto_select_ytb" -eq 1 ]; then
                LOG_OUT "Tip: Start Auto Select Proxy For YouTube Premium Unlock..."
                /usr/share/openclash/openclash_streaming_unlock.lua "YouTube Premium" >> $LOG_FILE
+            fi
+            if [ "$stream_auto_select_prime_video" -eq 1 ]; then
+               LOG_OUT "Tip: Start Auto Select Proxy For Amazon Prime Video Unlock..."
+               /usr/share/openclash/openclash_streaming_unlock.lua "Amazon Prime Video" >> $LOG_FILE
             fi
             if [ "$stream_auto_select_hbo_now" -eq 1 ]; then
                LOG_OUT "Tip: Start Auto Select Proxy For HBO Now Unlock..."
@@ -169,17 +180,27 @@ fi
                LOG_OUT "Tip: Start Auto Select Proxy For TVB Anywhere+ Unlock..."
                /usr/share/openclash/openclash_streaming_unlock.lua "TVB Anywhere+" >> $LOG_FILE
             fi
-            if [ "$stream_auto_select_prime_video" -eq 1 ]; then
-               LOG_OUT "Tip: Start Auto Select Proxy For Amazon Prime Video Unlock..."
-               /usr/share/openclash/openclash_streaming_unlock.lua "Amazon Prime Video" >> $LOG_FILE
+            if [ "$stream_auto_select_dazn" -eq 1 ]; then
+               LOG_OUT "Tip: Start Auto Select Proxy For DAZN Unlock..."
+               /usr/share/openclash/openclash_streaming_unlock.lua "DAZN" >> $LOG_FILE
+            fi
+            if [ "$stream_auto_select_paramount_plus" -eq 1 ]; then
+               LOG_OUT "Tip: Start Auto Select Proxy For Paramount Plus Unlock..."
+               /usr/share/openclash/openclash_streaming_unlock.lua "Paramount Plus" >> $LOG_FILE
+            fi
+            if [ "$stream_auto_select_discovery_plus" -eq 1 ]; then
+               LOG_OUT "Tip: Start Auto Select Proxy For Discovery Plus Unlock..."
+               /usr/share/openclash/openclash_streaming_unlock.lua "Discovery Plus" >> $LOG_FILE
             fi
          fi
       fi
       STREAM_AUTO_SELECT=$(expr "$STREAM_AUTO_SELECT" + 1)
+   elif [ "$router_self_proxy" != "1" ] && [ "$stream_auto_select" -eq 1 ]; then
+      LOG_OUT "Error: Streaming Unlock Could not Work Because of Router-Self Proxy Disabled, Exiting..."
    fi
 
 ##STREAM_DNS_PREFETCH
-   if [ "$stream_domains_prefetch" -eq 1 ]; then
+   if [ "$stream_domains_prefetch" -eq 1 ] && [ "$router_self_proxy" -eq 1 ]; then
       [ "$stream_domains_prefetch_interval" -ne "$stream_domains_prefetch_interval_now" ] && STREAM_DOMAINS_PREFETCH=1 && stream_domains_prefetch_interval="$stream_domains_prefetch_interval_now"
       if [ "$STREAM_DOMAINS_PREFETCH" -ne 0 ]; then
          if [ "$(expr "$STREAM_DOMAINS_PREFETCH" % "$stream_domains_prefetch_interval_now")" -eq 0 ] || [ "$STREAM_DOMAINS_PREFETCH" -eq 1 ]; then
@@ -202,6 +223,8 @@ fi
          fi
       fi
       STREAM_DOMAINS_PREFETCH=$(expr "$STREAM_DOMAINS_PREFETCH" + 1)
+   elif [ "$router_self_proxy" != "1" ] && [ "$stream_domains_prefetch" -eq 1 ]; then
+      LOG_OUT "Error: Streaming DNS Prefetch Could not Work Because of Router-Self Proxy Disabled, Exiting..."
    fi
 
    SLOG_CLEAN

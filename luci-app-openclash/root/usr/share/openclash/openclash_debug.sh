@@ -35,12 +35,14 @@ core_type=$(uci -q get openclash.config.core_version)
 cpu_model=$(opkg status libc 2>/dev/null |grep 'Architecture' |awk -F ': ' '{print $2}' 2>/dev/null)
 core_version=$(/etc/openclash/core/clash -v 2>/dev/null |awk -F ' ' '{print $2}' 2>/dev/null)
 core_tun_version=$(/etc/openclash/core/clash_tun -v 2>/dev/null |awk -F ' ' '{print $2}' 2>/dev/null)
+core_meta_version=$(/etc/openclash/core/clash_meta -v 2>/dev/null |awk -F ' ' '{print $3}' 2>/dev/null)
 servers_update=$(uci -q get openclash.config.servers_update)
 mix_proxies=$(uci -q get openclash.config.mix_proxies)
 op_version=$(sed -n 1p /usr/share/openclash/res/openclash_version)
 china_ip_route=$(uci -q get openclash.config.china_ip_route)
 common_ports=$(uci -q get openclash.config.common_ports)
 dns_remote=$(uci -q -q get openclash.config.dns_remote)
+router_self_proxy=$(uci -q get openclash.config.router_self_proxy)
 
 if [ -z "$RAW_CONFIG_FILE" ] || [ ! -f "$RAW_CONFIG_FILE" ]; then
 	CONFIG_NAME=$(ls -lt /etc/openclash/config/ | grep -E '.yaml|.yml' | head -n 1 |awk '{print $9}')
@@ -120,6 +122,7 @@ ruby-pstore: $(ts_re "$(opkg status ruby-pstore 2>/dev/null |grep 'Status' |awk 
 ruby-dbm: $(ts_re "$(opkg status ruby-dbm 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
 kmod-tun(TUN模式): $(ts_re "$(opkg status kmod-tun 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
 luci-compat(Luci-19.07): $(ts_re "$(opkg status luci-compat 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
+kmod-inet-diag(PROCESS-NAME): $(ts_re "$(opkg status kmod-inet-diag 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
 EOF
 
 #core
@@ -195,6 +198,29 @@ EOF
 fi
 
 cat >> "$DEBUG_LOG" <<-EOF
+Meta内核版本: $core_meta_version
+EOF
+
+if [ ! -f "/etc/openclash/core/clash_meta" ]; then
+cat >> "$DEBUG_LOG" <<-EOF
+Meta内核文件: 不存在
+EOF
+else
+cat >> "$DEBUG_LOG" <<-EOF
+Meta内核文件: 存在
+EOF
+fi
+if [ ! -x "/etc/openclash/core/clash_meta" ]; then
+cat >> "$DEBUG_LOG" <<-EOF
+Meta内核运行权限: 否
+EOF
+else
+cat >> "$DEBUG_LOG" <<-EOF
+Meta内核运行权限: 正常
+EOF
+fi
+
+cat >> "$DEBUG_LOG" <<-EOF
 
 #===================== 插件设置 =====================#
 
@@ -214,6 +240,7 @@ IPV6-DNS解析: $(ts_cf "$ipv6_dns")
 仅允许常用端口流量: $(ts_cf "$common_ports")
 绕过中国大陆IP: $(ts_cf "$china_ip_route")
 DNS远程解析: $(ts_cf "$dns_remote")
+路由本机代理: $(ts_cf "$router_self_proxy")
 
 #启动异常时建议关闭此项后重试
 混合节点: $(ts_cf "$mix_proxies")
@@ -273,6 +300,13 @@ iptables-save -t mangle >> "$DEBUG_LOG" 2>/dev/null
 
 cat >> "$DEBUG_LOG" <<-EOF
 
+#IPv4 Filter chain
+
+EOF
+iptables-save -t filter >> "$DEBUG_LOG" 2>/dev/null
+
+cat >> "$DEBUG_LOG" <<-EOF
+
 #IPv6 NAT chain
 
 EOF
@@ -284,6 +318,13 @@ cat >> "$DEBUG_LOG" <<-EOF
 
 EOF
 ip6tables-save -t mangle >> "$DEBUG_LOG" 2>/dev/null
+
+cat >> "$DEBUG_LOG" <<-EOF
+
+#IPv6 Filter chain
+
+EOF
+ip6tables-save -t filter >> "$DEBUG_LOG" 2>/dev/null
 
 cat >> "$DEBUG_LOG" <<-EOF
 
@@ -382,5 +423,20 @@ cat >> "$DEBUG_LOG" <<-EOF
 
 \`\`\`
 EOF
+
+wan_ip=$(/usr/share/openclash/openclash_get_network.lua "wanip")
+wan_ip6=$(/usr/share/openclash/openclash_get_network.lua "wanip6")
+
+if [ -n "$wan_ip" ]; then
+	for i in $wan_ip; do
+     sed -i "s/${wan_ip}/*WAN IP*/g" "$DEBUG_LOG" 2>/dev/null
+  done
+fi
+
+if [ -n "$wan_ip6" ]; then
+	for i in $wan_ip6; do
+     sed -i "s/${wan_ip6}/*WAN IP*/g" "$DEBUG_LOG" 2>/dev/null
+  done
+fi
 
 del_lock

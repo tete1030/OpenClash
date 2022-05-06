@@ -58,6 +58,9 @@ o:value("file")
 o = s:option(Value, "name", translate("Provider Name"))
 o.rmempty = false
 o.default = "Proxy-provider - "..sid
+if not m.uci:get("openclash", sid, "name") then
+	m.uci:set("openclash", sid, "manual", 1)
+end
 
 o = s:option(ListValue, "path", translate("Provider Path"))
 o.description = translate("Update Your Proxy Provider File From Config Luci Page")
@@ -91,7 +94,7 @@ o:depends("type", "http")
 o = s:option(ListValue, "health_check", translate("Provider Health Check"))
 o:value("false", translate("Disable"))
 o:value("true", translate("Enable"))
-o.default=true
+o.default = true
 
 o = s:option(Value, "health_check_url", translate("Health Check URL"))
 o:value("http://www.gstatic.com/generate_204")
